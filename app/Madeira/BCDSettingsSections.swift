@@ -686,6 +686,8 @@ struct BCDStorageItem: Identifiable, Hashable {
     func reconnectExternalGames(chooseAgain: @escaping () -> Void)
     /// What the folder picker did ("opened", "answered", "failed: ...", "closed"), for the log.
     func noteExternalPicker(_ what: String)
+    /// Opens the system folder picker (UIKit; SwiftUI's .fileImporter did not present on some devices). `reason` goes to the log.
+    func chooseExternalFolder(reason: String)
     var prefixToolsView: AnyView? { get }
 }
 
@@ -700,6 +702,7 @@ extension BCDStorageBackend {
     func connectExternalGames(_ url: URL) {}
     func reconnectExternalGames(chooseAgain: @escaping () -> Void) {}
     func noteExternalPicker(_ what: String) {}
+    func chooseExternalFolder(reason: String) {}
 }
 
 struct BCDStorageSettings<Backend: BCDStorageBackend>: View {
@@ -709,7 +712,6 @@ struct BCDStorageSettings<Backend: BCDStorageBackend>: View {
     @Environment(\.bcdLayout) private var layout
     @State private var backup: BCDShareItems?
     @State private var choosingBackup = false
-    @State private var choosingExternalGames = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -776,9 +778,9 @@ struct BCDStorageSettings<Backend: BCDStorageBackend>: View {
         .bcdCard(padding: 16)
     }
 
-    /// Settings > Storage > External SSD (thebcd69/bcd-games#12 by Pardoxum, with Reconnect). The folder picker is attached
-    /// here, on the group, not on the page: the page already carries the saves backup's importer, and two importers
-    /// on one view can displace each other.
+    /// Settings > Storage > External SSD (thebcd69/bcd-games#12 by Pardoxum, with Reconnect). The folder picker is presented
+    /// from UIKit by the live backend (`chooseExternalFolder`), not by a SwiftUI `.fileImporter`, which did not present
+    /// on some devices.
     private var externalGames: some View {
         let saved = backend.externalGamesSavedFolder
         return BCDSettingsGroup(title: "External SSD",
@@ -788,8 +790,7 @@ struct BCDStorageSettings<Backend: BCDStorageBackend>: View {
                                      title: "Reconnect \(saved)", note: backend.externalGamesMessage,
                                      symbol: "externaldrive.badge.checkmark", enabled: backend.canConnectExternalGames) {
                     backend.reconnectExternalGames {
-                        backend.noteExternalPicker("opened (after reconnect)")
-                        choosingExternalGames = true
+                        backend.chooseExternalFolder(reason: "opened (after reconnect)")
                     }
                 }
             }
@@ -797,23 +798,12 @@ struct BCDStorageSettings<Backend: BCDStorageBackend>: View {
                                  title: saved == nil ? "Choose an SSD folder" : "Choose another SSD folder",
                                  note: saved == nil ? backend.externalGamesMessage : nil, symbol: "externaldrive",
                                  enabled: backend.canConnectExternalGames) {
-                backend.noteExternalPicker("opened")
-                choosingExternalGames = true
+                backend.chooseExternalFolder(reason: "opened")
             }
             if let free = backend.externalGamesFree {
                 BCDSettingsInfoRow(title: "Free on external drive", value: BCDFormat.bytes(free))
             }
         }
-        .fileImporter(isPresented: $choosingExternalGames, allowedContentTypes: [.folder]) { result in
-            switch result {
-            case .success(let url):
-                backend.noteExternalPicker("answered")
-                backend.connectExternalGames(url)
-            case .failure(let error):
-                backend.noteExternalPicker("failed: \(error.localizedDescription)")
-            }
-        }
-        .onChange(of: choosingExternalGames) { _, open in if !open { backend.noteExternalPicker("closed") } }
     }
 
     private var games: [BCDGame] {
