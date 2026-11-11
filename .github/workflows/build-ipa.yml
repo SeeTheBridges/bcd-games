@@ -18,8 +18,7 @@ concurrency:
 
 jobs:
   build:
-    # madeira-bcd: runs only in the owner's repository; a fork's run is skipped.
-    if: github.repository == 'thebcd69/madeira-bcd'
+    # FORK: the owner-only repository gate was removed so this fork can build.
     runs-on: macos-15
     # contents: write only so the token can see DRAFT releases, which is where
     # the Metal Shader Converter installer is kept (drafts are not public).
@@ -4678,16 +4677,17 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: bash tools/sign-and-publish-ota.sh build-out/Madeira-0.1.${{ steps.bn.outputs.n }}-unsigned.ipa ${{ steps.bn.outputs.n }} build-out/Madeira2-0.1.${{ steps.bn.outputs.n }}-unsigned.ipa
 
-      # Owner's decision (2026-10-02): no IPA artifact on GitHub at all. The
-      # repository and its Actions are public, so an artifact is downloadable by
-      # anyone; the only copy of a build is the signed IPA in the owner's
-      # private R2 bucket (the OTA step above). If that step did not succeed,
-      # the build fails here instead of keeping the IPA somewhere public.
-      - name: Check the IPA reached the private bucket
-        if: steps.ota.outcome != 'success'
-        run: |
-          echo "::error::OTA signing/upload did not succeed: this build's IPA was not kept anywhere (no GitHub artifact by design)"
-          exit 1
+      # FORK: the owner's rule "the IPA must reach the private bucket" was replaced. The OTA step above still runs
+      # (continue-on-error) and simply fails without the owner's secrets; the unsigned IPAs are kept as an artifact
+      # for 3 days instead. Download it from the run page and sign it yourself (SideStore / AltStore / Feather).
+      # NOTE: on a PUBLIC fork anyone can download this artifact; delete it once you have it.
+      - name: Keep the unsigned IPAs as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bcd-unsigned-ipas
+          path: build-out/*-unsigned.ipa
+          retention-days: 3
+          if-no-files-found: error
 
       # Full logs as an artifact -- the annotations above are truncated, and
       # digging them out of the raw job log is painful.
